@@ -1,10 +1,8 @@
 package cl.mascotas.gateway.security;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,37 +20,45 @@ import javax.crypto.SecretKey;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static cl.mascotas.gateway.security.Constants.*;
 
 /**
- * Filtro encargado de revisar el JWT
- * antes de permitir que la petición continúe.
- *
- * Este filtro se ejecuta una vez por cada petición.
+ * Filtro encargado de validar el JWT
+ * antes de permitir que una peticion atraviese el API Gateway.
  */
 @Component
 public class JWTAuthorizationFilter extends OncePerRequestFilter {
 
     /**
      * Obtiene el JWT desde el header Authorization
-     * y extrae la información que contiene.
+     * y valida su firma.
      */
     private Claims obtenerClaims(HttpServletRequest request) {
 
-        // Ejemplo recibido:
-        // Authorization: Bearer eyJ...
+        /*
+         * Ejemplo recibido:
+         *
+         * Authorization: Bearer eyJ...
+         */
         String authorizationHeader =
                 request.getHeader(HEADER_AUTHORIZATION);
 
-        // Quitamos "Bearer " y nos quedamos solamente con el JWT.
+        /*
+         * Eliminamos "Bearer "
+         * para quedarnos solamente con el JWT.
+         */
         String jwtToken =
                 authorizationHeader.replace(TOKEN_BEARER_PREFIX, "");
 
         /*
-         * Validamos la firma utilizando exactamente
-         * la misma clave secreta usada por Usuarios MS.
+         * Validamos:
+         * - Firma
+         * - Integridad
+         * - Fecha de expiracion
+         *
+         * Utilizamos la misma clave secreta
+         * que Usuarios MS utiliza para crear el token.
          */
         return Jwts.parser()
                 .verifyWith(
@@ -64,42 +70,68 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Si el token es válido, registramos al usuario
-     * como autenticado dentro de Spring Security.
+     * Registra al usuario como autenticado
+     * dentro de Spring Security.
      */
     private void establecerAutenticacion(Claims claims) {
 
         /*
-         * Recuperamos los permisos que Usuarios MS
-         * guardó dentro del JWT.
+         * Recuperamos del JWT el claim:
          *
-         * En nuestro caso:
+         * authorities
+         *
+         * En nuestro proyecto contiene:
          * ROLE_USER
          */
-        List<String> authorities =
-                (List<String>) claims.get("authorities");
+        Object authoritiesClaim =
+                claims.get("authorities");
 
         /*
-         * Creamos la autenticación que Spring Security
-         * guardará durante esta petición.
+         * Verificamos de forma segura que realmente
+         * sea una lista.
+         *
+         * Esto evita el warning que aparecia antes
+         * al convertir directamente a List<String>.
+         */
+        if (!(authoritiesClaim instanceof List<?> listaAuthorities)) {
+
+            SecurityContextHolder.clearContext();
+            return;
+        }
+
+        /*
+         * Transformamos cada permiso recibido
+         * en una autoridad reconocida por Spring Security.
+         */
+        List<SimpleGrantedAuthority> authorities =
+                listaAuthorities.stream()
+                        .map(Object::toString)
+                        .map(SimpleGrantedAuthority::new)
+                        .toList();
+
+        /*
+         * El subject del JWT contiene el email
+         * del usuario autenticado.
          */
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                         claims.getSubject(),
                         null,
-                        authorities.stream()
-                                .map(SimpleGrantedAuthority::new)
-                                .collect(Collectors.toList())
+                        authorities
                 );
 
+        /*
+         * Guardamos la autenticacion durante
+         * esta peticion.
+         */
         SecurityContextHolder
                 .getContext()
                 .setAuthentication(authentication);
     }
 
     /**
-     * Comprueba si la petición trae un JWT
-     * en el formato correcto.
+     * Comprueba si la peticion contiene
+     * un JWT en el formato Bearer.
      */
     private boolean tieneJWT(HttpServletRequest request) {
 
@@ -111,8 +143,8 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Método que se ejecuta automáticamente
-     * por cada petición que pasa por el Gateway.
+     * Este metodo se ejecuta una vez
+     * por cada peticion que pasa por el Gateway.
      */
     @Override
     protected void doFilterInternal(
@@ -124,14 +156,16 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
         try {
 
             /*
-             * Si viene un JWT, intentamos validarlo.
+             * Si la peticion trae JWT,
+             * intentamos validarlo.
              */
             if (tieneJWT(request)) {
 
-                Claims claims = obtenerClaims(request);
+                Claims claims =
+                        obtenerClaims(request);
 
                 /*
-                 * Si el token contiene permisos,
+                 * Si contiene permisos,
                  * autenticamos al usuario.
                  */
                 if (claims.get("authorities") != null) {
@@ -147,28 +181,31 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
 
                 /*
                  * Si no viene token,
-                 * no existe usuario autenticado.
+                 * dejamos la peticion sin autenticacion.
+                 *
+                 * WebSecurityConfig decide despues
+                 * si la ruta es publica o protegida.
                  */
                 SecurityContextHolder.clearContext();
             }
 
             /*
-             * Permitimos que Spring continúe
-             * procesando la petición.
-             *
-             * Más adelante WebSecurityConfig decidirá
-             * si esa ruta puede continuar o no.
+             * Continuamos con la peticion.
              */
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(
+                    request,
+                    response
+            );
 
-        } catch (
-                ExpiredJwtException |
-                UnsupportedJwtException |
-                MalformedJwtException e) {
+        } catch (JwtException | IllegalArgumentException e) {
 
             /*
-             * Si el token está vencido o tiene un formato
-             * incorrecto, detenemos la petición.
+             * Entramos aqui cuando el token:
+             *
+             * - Esta vencido
+             * - Tiene firma incorrecta
+             * - Esta mal formado
+             * - No puede ser procesado
              */
             SecurityContextHolder.clearContext();
 

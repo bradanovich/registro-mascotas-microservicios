@@ -1,10 +1,8 @@
 package cl.mascotas.usuarios.security;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,53 +20,36 @@ import javax.crypto.SecretKey;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static cl.mascotas.usuarios.security.Constants.*;
 
 /**
- * Filtro encargado de VALIDAR el JWT.
- *
- * Esta clase revisa cada peticion que llega al microservicio
- * Usuarios y busca el token en el header Authorization.
- *
- * Ejemplo:
- *
- * Authorization: Bearer eyJhbGciOi...
+ * Filtro encargado de validar el JWT
+ * que llega en cada peticion al microservicio Usuarios.
  */
 @Component
 public class JWTAuthorizationFilter extends OncePerRequestFilter {
 
     /**
-     * Extrae el token desde el header Authorization
-     * y valida su firma utilizando nuestra clave secreta.
-     *
-     * Si el token es valido, devuelve la informacion
-     * almacenada dentro del JWT.
+     * Extrae y valida el JWT enviado en el header Authorization.
      */
     private Claims obtenerClaims(HttpServletRequest request) {
 
-        /*
-         * Obtenemos:
-         *
-         * Bearer eyJhbGciOi...
-         */
+        // Ejemplo:
+        // Authorization: Bearer eyJ...
         String authorizationHeader =
                 request.getHeader(HEADER_AUTHORIZATION);
 
-        /*
-         * Quitamos "Bearer "
-         * para quedarnos solamente con el JWT.
-         */
+        // Quitamos el texto "Bearer "
+        // y dejamos solamente el token.
         String jwtToken =
-                authorizationHeader.replace(
-                        TOKEN_BEARER_PREFIX,
-                        ""
-                );
+                authorizationHeader.replace(TOKEN_BEARER_PREFIX, "");
 
         /*
-         * JJWT valida la firma del token utilizando
-         * la misma clave con la que fue creado.
+         * Validamos:
+         * - Firma del token
+         * - Integridad
+         * - Fecha de expiracion
          */
         return Jwts.parser()
                 .verifyWith(
@@ -86,60 +67,71 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
     private void establecerAutenticacion(Claims claims) {
 
         /*
-         * Recuperamos los roles guardados dentro del token.
+         * Recuperamos el claim "authorities".
          *
-         * En nuestro caso:
-         * ROLE_USER
+         * Antes haciamos:
+         *
+         * (List<String>) claims.get("authorities")
+         *
+         * Eso funcionaba, pero Java mostraba el warning
+         * "unchecked or unsafe operations".
+         *
+         * Ahora usamos List<?> y convertimos sus valores
+         * de forma segura.
          */
-        List<String> authorities =
-                (List<String>) claims.get("authorities");
+        Object authoritiesClaim =
+                claims.get("authorities");
+
+        if (!(authoritiesClaim instanceof List<?> listaAuthorities)) {
+            SecurityContextHolder.clearContext();
+            return;
+        }
 
         /*
-         * Creamos el objeto que representa al usuario
-         * autenticado dentro de Spring Security.
+         * Convertimos cada permiso recibido
+         * en una autoridad que Spring Security entiende.
          *
-         * claims.getSubject() contiene el email
-         * que guardamos al crear el JWT.
+         * Ejemplo:
+         * ROLE_USER
+         */
+        List<SimpleGrantedAuthority> authorities =
+                listaAuthorities.stream()
+                        .map(Object::toString)
+                        .map(SimpleGrantedAuthority::new)
+                        .toList();
+
+        /*
+         * El subject del token contiene el email
+         * del usuario que inicio sesion.
          */
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                         claims.getSubject(),
                         null,
-                        authorities.stream()
-                                .map(SimpleGrantedAuthority::new)
-                                .collect(Collectors.toList())
+                        authorities
                 );
 
-        /*
-         * Guardamos la autenticacion en el contexto
-         * de seguridad de Spring.
-         */
+        // Guardamos al usuario como autenticado.
         SecurityContextHolder
                 .getContext()
                 .setAuthentication(authentication);
     }
 
     /**
-     * Comprueba si la peticion contiene un JWT.
+     * Comprueba si la peticion trae un JWT.
      */
     private boolean tieneJWT(HttpServletRequest request) {
 
         String authorizationHeader =
                 request.getHeader(HEADER_AUTHORIZATION);
 
-        /*
-         * El header debe existir y comenzar con:
-         *
-         * Bearer
-         */
         return authorizationHeader != null
-                && authorizationHeader.startsWith(
-                TOKEN_BEARER_PREFIX
-        );
+                && authorizationHeader.startsWith(TOKEN_BEARER_PREFIX);
     }
 
     /**
-     * Este metodo se ejecuta una vez por cada peticion HTTP.
+     * Este metodo se ejecuta automaticamente
+     * una vez por cada peticion.
      */
     @Override
     protected void doFilterInternal(
@@ -151,7 +143,7 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
         try {
 
             /*
-             * Si existe un JWT, intentamos validarlo.
+             * Si viene un JWT intentamos validarlo.
              */
             if (tieneJWT(request)) {
 
@@ -159,7 +151,7 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
                         obtenerClaims(request);
 
                 /*
-                 * Si el token contiene roles,
+                 * Si encontramos authorities,
                  * autenticamos al usuario.
                  */
                 if (claims.get("authorities") != null) {
@@ -174,31 +166,28 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
             } else {
 
                 /*
-                 * Si no hay JWT, dejamos al usuario
-                 * como no autenticado.
+                 * Si no viene token,
+                 * dejamos la peticion sin autenticacion.
                  *
-                 * Luego WebSecurityConfig decidira
-                 * si puede acceder o no al endpoint.
+                 * WebSecurityConfig decide despues
+                 * si esa ruta es publica o protegida.
                  */
                 SecurityContextHolder.clearContext();
             }
 
-            /*
-             * La peticion continua hacia el controlador.
-             */
             filterChain.doFilter(
                     request,
                     response
             );
 
-        } catch (
-                ExpiredJwtException
-                | UnsupportedJwtException
-                | MalformedJwtException e) {
+        } catch (JwtException | IllegalArgumentException e) {
 
             /*
-             * Si el JWT esta vencido, mal formado
-             * o no es compatible, rechazamos la peticion.
+             * Aqui entramos si el JWT:
+             * - Esta vencido
+             * - Tiene una firma incorrecta
+             * - Esta mal formado
+             * - No puede ser procesado
              */
             SecurityContextHolder.clearContext();
 
