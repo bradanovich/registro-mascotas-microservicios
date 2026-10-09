@@ -27,32 +27,96 @@
 
     <dependencies>
 
-        <!-- API Gateway -->
+        <!-- ===================================================== -->
+        <!-- API GATEWAY                                          -->
+        <!-- ===================================================== -->
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway-server-webmvc</artifactId>
         </dependency>
 
-        <!-- Eureka Client -->
+
+        <!-- ===================================================== -->
+        <!-- SEGURIDAD                                            -->
+        <!-- ===================================================== -->
+
+        <!--
+            Spring Security permitira proteger las rutas
+            que pasan por el API Gateway.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- JWT                                                  -->
+        <!-- ===================================================== -->
+
+        <!-- API para leer y validar tokens JWT -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.12.5</version>
+        </dependency>
+
+        <!-- Implementacion interna de JWT -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.12.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Soporte JSON para JWT -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.12.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- EUREKA                                               -->
+        <!-- ===================================================== -->
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
 
-        <!-- Load Balancer para usar lb://nombre-servicio -->
+
+        <!-- ===================================================== -->
+        <!-- LOAD BALANCER                                        -->
+        <!-- ===================================================== -->
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
-        <!-- Tests -->
+
+        <!-- ===================================================== -->
+        <!-- TESTS                                                -->
+        <!-- ===================================================== -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
+
 
     <dependencyManagement>
         <dependencies>
@@ -67,6 +131,7 @@
 
         </dependencies>
     </dependencyManagement>
+
 
     <build>
         <plugins>
