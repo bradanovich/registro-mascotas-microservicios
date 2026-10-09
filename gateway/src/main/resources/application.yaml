@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+
+            - id: usuarios-service
+              uri: lb://usuarios
+              predicates:
+                - Path=/mascotas-app/usuarios/**
+
+            - id: mascotas-service
+              uri: lb://mascotas
+              predicates:
+                - Path=/mascotas-app/mascotas/**
+
+            - id: salud-service
+              uri: lb://salud
+              predicates:
+                - Path=/mascotas-app/salud/**
+
+            - id: citas-service
+              uri: lb://citas
+              predicates:
+                - Path=/mascotas-app/citas/**
+
+            - id: recordatorios-service
+              uri: lb://recordatorios
+              predicates:
+                - Path=/mascotas-app/recordatorios/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
