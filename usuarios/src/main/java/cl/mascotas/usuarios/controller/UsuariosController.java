@@ -1,9 +1,11 @@
 package cl.mascotas.usuarios.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import cl.mascotas.usuarios.dto.UsuarioDTO;
 import cl.mascotas.usuarios.model.Usuario;
+import cl.mascotas.usuarios.security.JWTAuthenticationConfig;
 import cl.mascotas.usuarios.service.UsuariosService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,12 +24,31 @@ public class UsuariosController {
 
     private final UsuariosService us;
 
-    // Inyeccion de dependencias por constructor
-    public UsuariosController(UsuariosService us) {
+    /*
+     * Esta clase es la encargada de generar
+     * el token JWT después de un login correcto.
+     */
+    private final JWTAuthenticationConfig jwtAuthenticationConfig;
+
+    /*
+     * Inyección de dependencias por constructor.
+     *
+     * Spring nos entrega:
+     * - UsuariosService para trabajar con usuarios.
+     * - JWTAuthenticationConfig para generar tokens.
+     */
+    public UsuariosController(
+            UsuariosService us,
+            JWTAuthenticationConfig jwtAuthenticationConfig) {
+
         this.us = us;
+        this.jwtAuthenticationConfig = jwtAuthenticationConfig;
     }
 
+    // ============================================================
     // LISTAR TODOS LOS USUARIOS
+    // ============================================================
+
     @GetMapping
     @Operation(
             summary = "Listar usuarios",
@@ -38,7 +59,10 @@ public class UsuariosController {
         return ResponseEntity.ok(us.listar());
     }
 
+    // ============================================================
     // BUSCAR USUARIO POR ID
+    // ============================================================
+
     @GetMapping("/{id}")
     @Operation(
             summary = "Buscar usuario por id",
@@ -54,11 +78,13 @@ public class UsuariosController {
                     description = "Usuario no encontrado"
             )
     })
-    public ResponseEntity<?> obtener(@PathVariable Integer id) {
+    public ResponseEntity<?> obtener(
+            @PathVariable Integer id) {
 
         try {
 
-            Usuario usuario = us.buscarPorId(id);
+            Usuario usuario =
+                    us.buscarPorId(id);
 
             return ResponseEntity.ok(usuario);
 
@@ -70,7 +96,10 @@ public class UsuariosController {
         }
     }
 
+    // ============================================================
     // BUSCAR USUARIO UTILIZANDO DTO
+    // ============================================================
+
     @GetMapping("/dto/{id}")
     @Operation(
             summary = "Buscar usuario DTO por id",
@@ -81,7 +110,8 @@ public class UsuariosController {
 
         try {
 
-            UsuarioDTO dto = us.buscarUsuarioDTO(id);
+            UsuarioDTO dto =
+                    us.buscarUsuarioDTO(id);
 
             return ResponseEntity.ok(dto);
 
@@ -93,7 +123,10 @@ public class UsuariosController {
         }
     }
 
+    // ============================================================
     // REGISTRAR USUARIO
+    // ============================================================
+
     @PostMapping("/registro")
     @Operation(
             summary = "Registrar usuario",
@@ -114,7 +147,8 @@ public class UsuariosController {
 
         try {
 
-            Usuario nuevoUsuario = us.registrar(usuario);
+            Usuario nuevoUsuario =
+                    us.registrar(usuario);
 
             return ResponseEntity
                     .status(HttpStatus.CREATED)
@@ -128,16 +162,19 @@ public class UsuariosController {
         }
     }
 
-    // LOGIN
+    // ============================================================
+    // LOGIN + GENERACIÓN DE JWT
+    // ============================================================
+
     @PostMapping("/login")
     @Operation(
             summary = "Login de usuario",
-            description = "Valida email y contrasena del usuario"
+            description = "Valida email y contrasena y genera un token JWT"
     )
     @ApiResponses(value = {
             @ApiResponse(
                     responseCode = "200",
-                    description = "Login correcto"
+                    description = "Login correcto y token JWT generado"
             ),
             @ApiResponse(
                     responseCode = "401",
@@ -149,23 +186,70 @@ public class UsuariosController {
 
         try {
 
+            /*
+             * PRIMER PASO:
+             *
+             * Validamos el email y contraseña utilizando
+             * el servicio que ya teníamos funcionando.
+             */
             Usuario usuarioEncontrado =
                     us.login(
                             usuario.getEmail(),
                             usuario.getPassword()
                     );
 
-            return ResponseEntity.ok(usuarioEncontrado);
+            /*
+             * SEGUNDO PASO:
+             *
+             * Si llegamos hasta aquí significa que las
+             * credenciales eran correctas.
+             *
+             * Generamos un JWT utilizando el email
+             * del usuario como identificador.
+             */
+            String token =
+                    jwtAuthenticationConfig
+                            .getJWTToken(
+                                    usuarioEncontrado.getEmail()
+                            );
+
+            /*
+             * TERCER PASO:
+             *
+             * Devolvemos un JSON con:
+             *
+             * - mensaje
+             * - token JWT
+             * - información del usuario
+             *
+             * La contraseña NO aparecerá porque en Usuario
+             * tenemos @JsonProperty(WRITE_ONLY).
+             */
+            Map<String, Object> respuesta =
+                    Map.of(
+                            "mensaje", "Login correcto",
+                            "token", token,
+                            "usuario", usuarioEncontrado
+                    );
+
+            return ResponseEntity.ok(respuesta);
 
         } catch (RuntimeException e) {
 
+            /*
+             * Si el email no existe o la contraseña
+             * es incorrecta respondemos 401.
+             */
             return ResponseEntity
                     .status(HttpStatus.UNAUTHORIZED)
                     .body(e.getMessage());
         }
     }
 
+    // ============================================================
     // ACTUALIZAR USUARIO
+    // ============================================================
+
     @PutMapping("/{id}")
     @Operation(
             summary = "Actualizar perfil",
@@ -200,7 +284,10 @@ public class UsuariosController {
         }
     }
 
+    // ============================================================
     // ELIMINAR USUARIO
+    // ============================================================
+
     @DeleteMapping("/{id}")
     @Operation(
             summary = "Eliminar usuario",
