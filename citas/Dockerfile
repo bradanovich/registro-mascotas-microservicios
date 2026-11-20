@@ -1,25 +1,11 @@
-# ============================================================================
-# Dockerfile del microservicio CITAS (puerto 8084)
-# Mismo estilo que el resto de los microservicios.
-# ============================================================================
+FROM maven:3.9-eclipse-temurin-25 AS build
+WORKDIR /workspace
+COPY pom.xml ./
+COPY src src
+RUN --mount=type=cache,target=/root/.m2 mvn -B -q -DskipTests package
 
-# Imagen base: Java 25 (JRE).
 FROM eclipse-temurin:25-jre
-
-# Carpeta de trabajo dentro del contenedor.
-workdir /app
-
-# Copia el .jar ya compilado (se genera con "mvnw package").
-copy target/citas-0.0.1-SNAPSHOT.jar app.jar
-
-# Conexion a MySQL. MySQL NO se dockeriza: queda en tu maquina, que desde
-# dentro del contenedor se ve como "host.docker.internal".
-env SPRING_DATASOURCE_URL="jdbc:mysql://host.docker.internal:3306/citas_db"
-env SPRING_DATASOURCE_USERNAME="root"
-env SPRING_DATASOURCE_PASSWORD=""
-
-# Puerto en el que escucha el servicio.
-expose 8084
-
-# Comando de arranque del contenedor.
+WORKDIR /app
+COPY --from=build /workspace/target/*.jar app.jar
+EXPOSE 8084
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -23,3 +23,6 @@ Thumbs.db
 
 # Spring Boot
 spring.log
+
+# Variables de entorno
+.env
