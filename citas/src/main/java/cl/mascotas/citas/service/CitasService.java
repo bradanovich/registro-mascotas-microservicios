@@ -20,6 +20,9 @@ public class CitasService {
     @Autowired
     private MascotaClient mascotaClient;
 
+    @Autowired
+    private MensajeSqsService mensajeSqsService;
+
     public List<Cita> listar() {
         return cr.findAll();
     }
@@ -34,7 +37,9 @@ public class CitasService {
         if (mascotaDTO == null) {
             throw new RuntimeException("La mascota no existe.");
         }
-        return cr.save(cita);
+        Cita citaGuardada = cr.save(cita);
+        mensajeSqsService.publicarCitaCreada(citaGuardada);
+        return citaGuardada;
     }
 
     public Cita actualizarCita(Integer id, Cita cita) {

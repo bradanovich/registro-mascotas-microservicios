@@ -20,6 +20,9 @@ public class RecordatoriosService {
     @Autowired
     private MascotaClient mascotaClient;
 
+    @Autowired
+    private MensajeSqsService mensajeSqsService;
+
     public List<Recordatorio> listar() {
         return rr.findAll();
     }
@@ -34,7 +37,9 @@ public class RecordatoriosService {
         if (mascotaDTO == null) {
             throw new RuntimeException("La mascota no existe.");
         }
-        return rr.save(recordatorio);
+        Recordatorio recordatorioGuardado = rr.save(recordatorio);
+        mensajeSqsService.publicarRecordatorioCreado(recordatorioGuardado);
+        return recordatorioGuardado;
     }
 
     public Recordatorio actualizarRecordatorio(Integer id, Recordatorio recordatorio) {

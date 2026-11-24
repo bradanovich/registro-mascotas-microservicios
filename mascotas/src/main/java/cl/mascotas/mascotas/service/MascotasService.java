@@ -19,14 +19,17 @@ public class MascotasService {
 
     private final MascotasRepository mr;
     private final UsuarioClient usuarioClient;
+    private final MensajeSqsService mensajeSqsService;
 
     // Inyeccion de dependencias por constructor
     public MascotasService(
             MascotasRepository mr,
-            UsuarioClient usuarioClient) {
+            UsuarioClient usuarioClient,
+            MensajeSqsService mensajeSqsService) {
 
         this.mr = mr;
         this.usuarioClient = usuarioClient;
+        this.mensajeSqsService = mensajeSqsService;
     }
 
     // Listar todas las mascotas
@@ -47,7 +50,11 @@ public class MascotasService {
 
         validarDueno(mascota.getIdDueno());
 
-        return mr.save(mascota);
+        Mascota mascotaGuardada = mr.save(mascota);
+
+        mensajeSqsService.publicarMascotaCreada(mascotaGuardada);
+
+        return mascotaGuardada;
     }
 
     // Actualizar mascota
