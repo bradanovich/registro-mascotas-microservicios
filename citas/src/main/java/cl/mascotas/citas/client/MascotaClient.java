@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import cl.mascotas.citas.dto.MascotaDTO;
 
-@FeignClient(name = "mascotas", url = "http://localhost:8082")
+@FeignClient(name = "mascotas")
 public interface MascotaClient {
 
     @GetMapping("/mascotas-app/mascotas/dto/{id}")
